@@ -2,6 +2,14 @@ import time
 import schedule
 import paho.mqtt.client as paho
 
+
+"""
+In this exaple we just change the a flag, in a real scenario we would set
+two crons, one for lights on at X time and one for closing the lights at y time.
+"""
+
+
+
 BROKER = "192.168.1.2"
 PORT=1883
 TOPIC="house/common/livingroom/lights"
