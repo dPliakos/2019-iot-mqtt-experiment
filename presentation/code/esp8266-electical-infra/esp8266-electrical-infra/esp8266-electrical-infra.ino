@@ -26,18 +26,25 @@
 #include <ESP8266WiFi.h>
 #include <PubSubClient.h>
 
-#define SSID        "xxxxxxxxx"
-#define PASSWORD    "xxxxxxxxx"
+#define SSID        "xxxxxx"
+#define PASSWORD    "xxxxxx"
 #define BROKER      "192.168.1.2"
-#define TOPIC       "house/common/livingroom/lights"
-#define LED         14
+#define MAX_ANALOG_VALUE 1024
 
+#define TOPIC       "house/infra/power"
+#define TRIMER      A0
+
+
+
+const char* ssid = "COSMOTE-24D73D";
+const char* password = "GN33C6xgSjeAASk6";
+const char* mqtt_server = "192.168.1.2";
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 long lastMsg = 0;
-char msg[50];
-int value = 0;
+char msg[1];
+char oldMsg[1];
 
 void setup_wifi() {
 
@@ -62,28 +69,26 @@ void setup_wifi() {
   Serial.println(WiFi.localIP());
 }
 
-bool shouldOpen(char* payload) {
-   if (payload[0] == 'o' && payload[1] == 'n') return true;
-   return false;
-}
-
 void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
-
   for (int i = 0; i < length; i++) {
     Serial.print((char)payload[i]);
   }
   Serial.println();
 
   // Switch on the LED if an 1 was received as first character
-  if (shouldOpen((char*)payload)) {
-    Serial.println("Lights on");
-    digitalWrite(LED, HIGH);
+  if ((char)payload[0] == '1') {
+    digitalWrite(BUILTIN_LED, LOW);
+    digitalWrite(2, LOW);// Turn the LED on (Note that LOW is the voltage level
+    Serial.println("2 on");
+    // but actually the LED is on; this is because
+    // it is active low on the ESP-01)
   } else {
-    Serial.println("Lights off");
-    digitalWrite(LED, LOW);
+    digitalWrite(BUILTIN_LED, HIGH);  // Turn the LED off by making the voltage HIGH
+    digitalWrite(2, HIGH);// Turn the LED on (Note that LOW is the voltage level
+    Serial.println("2 off");
   }
 
 }
@@ -101,7 +106,7 @@ void reconnect() {
       // Once connected, publish an announcement...
       client.publish("outTopic", "hello world");
       // ... and resubscribe
-      client.subscribe(TOPIC);
+      client.subscribe("house/door");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -113,11 +118,12 @@ void reconnect() {
 }
 
 void setup() {
-  pinMode(LED, OUTPUT);     // Initialize the BUILTIN_LED pin as an output
   Serial.begin(115200);
   setup_wifi();
-  client.setServer(BROKER, 1883);
+  client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
+  pinMode(TRIMER, INPUT);
+  oldMsg[0] = 'a';
 }
 
 void loop() {
@@ -126,4 +132,29 @@ void loop() {
     reconnect();
   }
   client.loop();
+
+  long now = millis();
+  if (now - lastMsg > 2000) {
+    lastMsg = now;
+
+    int value = analogRead(TRIMER);
+
+    float percentage = ((float) value / 1024.0) * 100;
+
+    if (percentage > 80) msg[0] = '5';
+    else if (percentage > 60) msg[0] = '4';
+    else if (percentage > 40) msg[0] = '3';
+    else if (percentage > 20) msg[0] = '2';
+    else if (percentage > 10) msg[0] = '1';
+    else msg[0] = '0';
+
+    Serial.println(percentage);
+    if (msg[0] != oldMsg[0]) {
+      oldMsg[0] = msg[0];
+      Serial.print("Publish message: ");
+      Serial.println(msg);
+      client.publish(TOPIC, msg);
+    }
+  }
+  delay(300);
 }
